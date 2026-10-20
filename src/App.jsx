@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { eras, figures } from './figures.js'
+import { stories } from './stories.js'
+import StoryPage from './StoryPage.jsx'
+import DetailPanel from './DetailPanel.jsx'
 
 const FAVORITES_KEY = 'wenmai:favorites:v1'
 const VISITED_KEY = 'wenmai:visited:v1'
@@ -48,7 +51,7 @@ function FigureCard({ figure, index, isFavorite, onOpen, onFavorite, compact = f
           {isFavorite ? '★' : '☆'}
         </button>
       </div>
-      <button className="card-main" type="button" onClick={() => onOpen(figure.id)} aria-label={`阅读${figure.name}的故事`}>
+      <button className="card-main" type="button" data-figure-id={figure.id} onClick={(event) => onOpen(figure.id, event)} aria-label={`展开${figure.name}的人物手札`}>
         <span className="card-mark" aria-hidden="true">{figure.mark}</span>
         <span className="card-role">{figure.role}</span>
         <span className="card-name">{figure.name}</span>
@@ -61,74 +64,54 @@ function FigureCard({ figure, index, isFavorite, onOpen, onFavorite, compact = f
   )
 }
 
-function Detail({ figure, isFavorite, onClose, onFavorite, onMove }) {
-  const closeRef = useRef(null)
-
-  useEffect(() => {
-    closeRef.current?.focus()
-    const oldOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    const onKey = (event) => {
-      if (event.key === 'Escape') onClose()
-      if (event.key === 'ArrowLeft') onMove(-1)
-      if (event.key === 'ArrowRight') onMove(1)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => {
-      document.body.style.overflow = oldOverflow
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [onClose, onMove])
-
-  return (
-    <div className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <section className={`detail-panel tone-${figure.color}`} role="dialog" aria-modal="true" aria-labelledby="detail-title">
-        <div className="detail-toolbar">
-          <span>文脉长卷 / 人物手札</span>
-          <button ref={closeRef} className="close-btn" type="button" onClick={onClose} aria-label="关闭人物详情">×</button>
-        </div>
-        <div className="detail-content">
-          <div className="detail-left">
-            <p className="eyebrow">{figure.era} · {figure.role}</p>
-            <div className="detail-mark" aria-hidden="true">{figure.mark}</div>
-            <h2 id="detail-title">{figure.name}</h2>
-            <p className="detail-alias">{figure.courtesy}</p>
-            <p className="detail-hook">{figure.hook}</p>
-            <div className="detail-quote"><span>代表作品 · {figure.work}</span><blockquote>“{figure.quote}”</blockquote></div>
-          </div>
-          <div className="detail-right">
-            <div className="reading-label">卷内阅读 <span>01 / 03</span></div>
-            <h3>说说这个人</h3>
-            <p>{figure.story}</p>
-            <div className="reading-label">细读一句 <span>02 / 03</span></div>
-            <h3>这句妙在哪</h3>
-            <p>{figure.insight}</p>
-            <div className="reading-label">史料小注 <span>03 / 03</span></div>
-            <p className="source-note">{figure.detail}</p>
-            <a className="source-link" href={figure.source} target="_blank" rel="noreferrer">查看作品原文与出处 ↗</a>
-            <div className="detail-actions">
-              <button className={`primary-button small${isFavorite ? ' saved' : ''}`} type="button" onClick={() => onFavorite(figure.id)}>{isFavorite ? '✓ 已收入书签 · 点击移除' : '＋ 收入我的书签'}</button>
-              <div className="page-arrows">
-                <button type="button" onClick={() => onMove(-1)} aria-label="上一位人物">←</button>
-                <button type="button" onClick={() => onMove(1)} aria-label="下一位人物">→</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-  )
-}
-
 export default function App() {
   const [era, setEra] = useState('all')
   const [query, setQuery] = useState('')
-  const [selectedId, setSelectedId] = useState(null)
+  const [selectedId, setSelectedId] = useState(() => new URLSearchParams(window.location.search).get('person'))
+  const [detailId, setDetailId] = useState(null)
   const [favorites, setFavorites] = useState(() => loadIds(FAVORITES_KEY))
   const [visited, setVisited] = useState(() => loadIds(VISITED_KEY))
   const [notice, setNotice] = useState('')
   const [progress, setProgress] = useState(0)
   const noticeTimer = useRef(null)
+  const homeScrollY = useRef(0)
+  const wasReading = useRef(Boolean(selectedId))
+  const lastOpenedId = useRef(null)
+  const detailTrigger = useRef(null)
+  const returningHome = useRef(false)
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (returningHome.current) {
+        returningHome.current = false
+        const url = new URL(window.location.href)
+        url.searchParams.delete('person')
+        window.history.replaceState({}, '', url)
+        setSelectedId(null)
+      } else {
+        setSelectedId(new URLSearchParams(window.location.search).get('person'))
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
+  useEffect(() => {
+    if (selectedId) {
+      wasReading.current = true
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+      if (figures.some((figure) => figure.id === selectedId)) {
+        setVisited((items) => [selectedId, ...items.filter((id) => id !== selectedId)])
+      }
+    } else if (wasReading.current) {
+      wasReading.current = false
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: homeScrollY.current, left: 0, behavior: 'instant' })
+        const target = lastOpenedId.current && document.querySelector(`button.card-main[data-figure-id="${lastOpenedId.current}"]`)
+        ;(target || document.getElementById('explore-title'))?.focus({ preventScroll: true })
+      })
+    }
+  }, [selectedId])
 
   useEffect(() => {
     const onScroll = () => {
@@ -162,6 +145,7 @@ export default function App() {
   }, [era, query])
 
   const selected = figures.find((figure) => figure.id === selectedId)
+  const detailed = figures.find((figure) => figure.id === detailId)
   const savedFigures = figures.filter((figure) => favorites.includes(figure.id))
   const visitedFigures = visited.map((id) => figures.find((figure) => figure.id === id)).filter(Boolean).slice(0, 5)
 
@@ -171,9 +155,48 @@ export default function App() {
     noticeTimer.current = setTimeout(() => setNotice(''), 3200)
   }
 
-  function openFigure(id) {
+  function openStory(id, event) {
+    if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button > 0)) return
+    event?.preventDefault()
+    setDetailId(null)
+    if (!selectedId) homeScrollY.current = window.scrollY
+    lastOpenedId.current = id
+    const url = new URL(window.location.href)
+    url.searchParams.set('person', id)
+    url.hash = ''
+    const depth = (window.history.state?.wenmaiDepth || 0) + 1
+    window.history.pushState({ wenmaiDepth: depth }, '', url)
     setSelectedId(id)
+  }
+
+  function openDetail(id, event) {
+    detailTrigger.current = event?.currentTarget || document.activeElement
+    setDetailId(id)
     setVisited((items) => [id, ...items.filter((item) => item !== id)])
+  }
+
+  function closeDetail() {
+    setDetailId(null)
+    requestAnimationFrame(() => detailTrigger.current?.focus({ preventScroll: true }))
+  }
+
+  function changeDetail(direction) {
+    const next = figures[(figures.findIndex((figure) => figure.id === detailId) + direction + figures.length) % figures.length]
+    setDetailId(next.id)
+    setVisited((items) => [next.id, ...items.filter((id) => id !== next.id)])
+  }
+
+  function closeFigure() {
+    const depth = window.history.state?.wenmaiDepth || 0
+    if (depth > 0) {
+      returningHome.current = true
+      window.history.go(-depth)
+      return
+    }
+    const url = new URL(window.location.href)
+    url.searchParams.delete('person')
+    window.history.replaceState({}, '', url)
+    setSelectedId(null)
   }
 
   function toggleFavorite(id) {
@@ -183,15 +206,20 @@ export default function App() {
     toast(alreadySaved ? `已从书签移除 ${figure.name}` : `已把 ${figure.name} 收入书签`)
   }
 
-  function moveFigure(direction) {
-    const index = figures.findIndex((figure) => figure.id === selectedId)
-    const next = (index + direction + figures.length) % figures.length
-    openFigure(figures[next].id)
+  function randomFigure() {
+    const options = figures.filter((figure) => figure.id !== detailId)
+    openDetail(options[Math.floor(Math.random() * options.length)].id)
   }
 
-  function randomFigure() {
-    const options = figures.filter((figure) => figure.id !== selectedId)
-    openFigure(options[Math.floor(Math.random() * options.length)].id)
+  if (selectedId) {
+    return selected && stories[selectedId] ? (
+      <>
+        <StoryPage key={selectedId} figure={selected} story={stories[selectedId]} isFavorite={favorites.includes(selectedId)} onFavorite={toggleFavorite} onHome={closeFigure} onNext={() => openStory(figures[(figures.indexOf(selected) + 1) % figures.length].id)} />
+        {notice && <div className="toast" role="status">{notice}</div>}
+      </>
+    ) : (
+      <main className="story-not-found"><span className="brand-seal">文<br />脉</span><h1>这页人物手札还没写下</h1><p>链接中的人物不存在，回到长卷再找找吧。</p><button type="button" className="primary-button" onClick={closeFigure}>返回长卷 →</button></main>
+    )
   }
 
   return (
@@ -220,10 +248,10 @@ export default function App() {
 
         <section id="explore" className="explore section-wrap" aria-labelledby="explore-title">
           <div className="section-topline"><span>第一章 / 沿卷探索</span><span>01 — 03</span></div>
-          <div className="section-heading"><div><p className="eyebrow">THE PEOPLE BEHIND THE POEMS</p><h2 id="explore-title">翻开他们的<span>故事</span></h2></div><p>把人物从课本里请出来。点开手札，读读他们的作品，也读读他们真实的人生。</p></div>
+          <div className="section-heading"><div><p className="eyebrow">THE PEOPLE BEHIND THE POEMS</p><h2 id="explore-title" tabIndex="-1">翻开他们的<span>故事</span></h2></div><p>把人物从课本里请出来。进入故事，读读他们的作品，也读读他们真实的人生。</p></div>
           <div className="filters"><div className="era-tabs" role="group" aria-label="按时代筛选">{eras.map((item) => <button key={item.id} type="button" className={era === item.id ? 'active' : ''} onClick={() => setEra(item.id)} aria-pressed={era === item.id}>{item.label}</button>)}</div><label className="search-box"><span aria-hidden="true">⌕</span><span className="sr-only">搜索人物、作品或时代</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索人物 / 作品 / 时代" />{query && <button type="button" onClick={() => setQuery('')} aria-label="清空搜索">×</button>}</label></div>
           <div className="result-line"><span>当前展开 <b>{filtered.length}</b> 位人物</span><span>点击人物，继续读下去 <span aria-hidden="true">↘</span></span></div>
-          {filtered.length ? <div className="figure-grid">{filtered.map((figure) => <FigureCard key={figure.id} figure={figure} index={figures.indexOf(figure)} isFavorite={favorites.includes(figure.id)} onOpen={openFigure} onFavorite={toggleFavorite} />)}</div> : <div className="empty-state"><span className="empty-glyph">寻</span><h3>这卷里暂时没有找到</h3><p>换个名字、作品或时代试试，也可以回到全部人物。</p><button type="button" onClick={() => { setEra('all'); setQuery('') }}>查看全部人物 →</button></div>}
+          {filtered.length ? <div className="figure-grid">{filtered.map((figure) => <FigureCard key={figure.id} figure={figure} index={figures.indexOf(figure)} isFavorite={favorites.includes(figure.id)} onOpen={openDetail} onFavorite={toggleFavorite} />)}</div> : <div className="empty-state"><span className="empty-glyph">寻</span><h3>这卷里暂时没有找到</h3><p>换个名字、作品或时代试试，也可以回到全部人物。</p><button type="button" onClick={() => { setEra('all'); setQuery('') }}>查看全部人物 →</button></div>}
         </section>
 
         <section className="interlude"><div className="interlude-inner"><span className="interlude-mark">✦</span><p>“读一个人，像读一首诗。<br />前一句是时代，后一句是他自己。”</p><span>文脉长卷 · 写给今天的读者</span></div></section>
@@ -231,14 +259,14 @@ export default function App() {
         <section id="shelf" className="shelf section-wrap" aria-labelledby="shelf-title">
           <div className="section-topline"><span>第二章 / 我的书签</span><span>02 — 03</span></div>
           <div className="section-heading"><div><p className="eyebrow">YOUR PERSONAL SCROLL</p><h2 id="shelf-title">把喜欢的<span>留下</span></h2></div><p>喜欢谁，就点人物卡片右上角的星。你的书签和阅读足迹会留在这台浏览器里。</p></div>
-          <div className="shelf-layout"><div><div className="shelf-label"><span>已收藏的人物</span><span>{String(savedFigures.length).padStart(2, '0')} / 09</span></div>{savedFigures.length ? <div className="saved-grid">{savedFigures.map((figure) => <FigureCard key={figure.id} figure={figure} index={figures.indexOf(figure)} compact isFavorite onOpen={openFigure} onFavorite={toggleFavorite} />)}</div> : <div className="shelf-empty"><span className="empty-glyph">签</span><h3>书签还是空白的</h3><p>去长卷里选一位想再读的人吧。</p><a href="#explore">去认识他们 →</a></div>}</div><aside className="footprints"><div className="shelf-label"><span>最近读过</span><span>{String(visitedFigures.length).padStart(2, '0')}</span></div>{visitedFigures.length ? <ol>{visitedFigures.map((figure, index) => <li key={figure.id}><button type="button" onClick={() => openFigure(figure.id)}><span>{String(index + 1).padStart(2, '0')}</span><strong>{figure.name}</strong><small>{figure.era}</small><span aria-hidden="true">↗</span></button></li>)}</ol> : <div className="footprints-empty">尚无阅读足迹。<br />翻开一份人物手札，它就会出现在这里。</div>}<div className="footprints-note">所有记录只保存在当前浏览器，无需登录。</div></aside></div>
+          <div className="shelf-layout"><div><div className="shelf-label"><span>已收藏的人物</span><span>{String(savedFigures.length).padStart(2, '0')} / 09</span></div>{savedFigures.length ? <div className="saved-grid">{savedFigures.map((figure) => <FigureCard key={figure.id} figure={figure} index={figures.indexOf(figure)} compact isFavorite onOpen={openDetail} onFavorite={toggleFavorite} />)}</div> : <div className="shelf-empty"><span className="empty-glyph">签</span><h3>书签还是空白的</h3><p>去长卷里选一位想再读的人吧。</p><a href="#explore">去认识他们 →</a></div>}</div><aside className="footprints"><div className="shelf-label"><span>最近读过</span><span>{String(visitedFigures.length).padStart(2, '0')}</span></div>{visitedFigures.length ? <ol>{visitedFigures.map((figure, index) => <li key={figure.id}><button type="button" onClick={() => openDetail(figure.id)}><span>{String(index + 1).padStart(2, '0')}</span><strong>{figure.name}</strong><small>{figure.era}</small><span aria-hidden="true">↗</span></button></li>)}</ol> : <div className="footprints-empty">尚无阅读足迹。<br />翻开一份人物手札，它就会出现在这里。</div>}<div className="footprints-note">所有记录只保存在当前浏览器，无需登录。</div></aside></div>
         </section>
 
         <section id="about" className="about section-wrap" aria-labelledby="about-title"><div className="section-topline"><span>第三章 / 卷尾记</span><span>03 — 03</span></div><div className="about-grid"><div><p className="eyebrow">A NOTE FROM THE MAKER</p><h2 id="about-title">让历史，<br /><span>有点意思。</span></h2></div><div><p>这是一座小小的线上人物展厅。我们想用清楚的史实、轻松的讲述和一点点纸墨气息，让历史人物不再只是考试里的名字。</p><p>作品原句可从人物手札进入原文页面核对。人物解说为本项目原创的通俗表达；历史细节若有争议，以所列文献及进一步研究为准。</p><a href="#top">回到卷首 ↑</a></div></div></section>
       </main>
 
       <footer className="site-footer"><div className="brand-seal">文<br />脉</div><p>文脉长卷 · 路线二 / Agent 辅助编程<br />九位人物，一场纸上相逢。</p><span>© 2026 文脉长卷</span></footer>
-      {selected && <Detail figure={selected} isFavorite={favorites.includes(selected.id)} onClose={() => setSelectedId(null)} onFavorite={toggleFavorite} onMove={moveFigure} />}
+      {detailed && <DetailPanel figure={detailed} index={figures.indexOf(detailed)} total={figures.length} isFavorite={favorites.includes(detailId)} onClose={closeDetail} onFavorite={toggleFavorite} onPrevious={() => changeDetail(-1)} onNext={() => changeDetail(1)} onDeepDive={openStory} />}
       {notice && <div className="toast" role="status">{notice}</div>}
     </>
   )

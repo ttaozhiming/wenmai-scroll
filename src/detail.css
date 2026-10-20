@@ -1,0 +1,9 @@
+.detail-deep{padding:0 0 30px;border-bottom:1px solid #c9c5b8}
+.detail-deep .reading-label{margin-bottom:14px}
+.detail-deep .reading-label strong{font-weight:600}
+.detail-right .detail-deep>p{font-size:13px;line-height:1.8;margin:0 0 18px}
+.detail-deep .primary-button.detail-deep-link{width:100%;justify-content:space-between;font-size:13px;padding:15px 18px}
+.detail-deep-link span{font-size:18px;line-height:1}
+.detail-deep+.reading-label{margin-top:35px}
+.detail-page-count{text-align:right;margin:12px 0 0!important;font-size:10px!important;color:#8d9084!important;letter-spacing:2px}
+@media(max-width:700px){.detail-deep{padding-bottom:26px}.detail-deep+.reading-label{margin-top:31px}.detail-deep-link{max-width:none!important}}
