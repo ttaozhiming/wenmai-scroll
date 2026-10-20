@@ -67,7 +67,7 @@ npm run preview
 ## 在线地址与截图
 
 - 仓库：<https://github.com/ttaozhiming/wenmai-scroll>。
-- GitHub Pages 地址：<https://ttaozhiming.github.io/wenmai-scroll/>。**本次新增人物故事页尚待上传到该仓库并确认发布，现有在线内容不代表此本地版本。**
+- GitHub Pages 地址：<https://ttaozhiming.github.io/wenmai-scroll/>。
 - 首页效果：[screenshot.png](screenshot.png)。
 
 具体上传文件和 GitHub 网站点击步骤见 [PUBLISH_GUIDE.md](PUBLISH_GUIDE.md)。交作业仍需提交源码 ZIP，里面应含源代码、九张必要图片、`README.md`、`AI_USE.md`、包配置与锁文件；不要放入 `node_modules/`、`dist/`、`.git/` 或个人密钥。
